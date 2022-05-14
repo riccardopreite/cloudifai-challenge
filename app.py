@@ -1,7 +1,4 @@
 import os, json, sys
-from sre_parse import CATEGORIES
-import numpy as np
-# import pandas as pd
 import xml.etree.ElementTree as ET
 import cv2
 
@@ -21,24 +18,24 @@ COCO_JSON =  {
 CATEGORIES = []
 CATEGORIES_FORMAT = {
     "category": {
-        "id": int,
-        "name": str,
-        "supercategory": str
+        "id": 0,
+        "name": "",
+        "supercategory": ""
     }
 }
 
 IMAGE = []
 IMAGE_FORMAT = {
- "id": int,
- "width": int,
- "height": int,
- "file_name": str
+ "id": 0,
+ "width": 0,
+ "height": 0,
+ "file_name": ""
 }
 ANNOTATION=[]
 ANNOTATION_FORMAT = {
  "id": id,
- "image_id": int,
- "category_id": int,
+ "image_id": 0,
+ "category_id": 0,
  "bbox": [] #x, y, width, height
 }
 
@@ -85,31 +82,49 @@ def resize_bndbox(bounded, scalex, scaley):
 
 def get_coco_data(xml_tree):
     tmp_categories = []
-    tmp_img = IMAGE_FORMAT
-    tmp_cat = CATEGORIES_FORMAT
-    tmp_ann = ANNOTATION_FORMAT
+    tmp_imgs = []
+    tmp_anns = []
+
+    tmp_img = {}
+    tmp_cat = {}
+    tmp_ann = {}
     
     file_name = xml_tree.find("filename").text
-    width = int(xml_tree.find("size").find("width").text)
-    height = int(xml_tree.find("size").find("height").text)
-    tmp_img["width"] = width
-    tmp_img["height"] = height
-    tmp_img["file_name"] = file_name
-    tmp_img["id"] = int(file_name.split(".")[0])
+    width = float(xml_tree.find("size").find("width").text)
+    height = float(xml_tree.find("size").find("height").text)
 
-    objects = xml_tree.find("object")
+    objects = xml_tree.findall("object")
     for obj in objects:
-        tmp_cat = CATEGORIES_FORMAT 
+        tmp_img = {}
+        tmp_cat = {}
+        tmp_ann = {}
         category_name = obj.find("name").text
+        x = float(obj.find("bndbox").find("xmin").text)
+        y = float(obj.find("bndbox").find("ymax").text)
         for category in COCO_CATEGORIES:
             if category['name'] == category_name:
-                tmp_cat["id"] = category["id"]
-                tmp_cat["name"] = category_name
-                tmp_cat["supercategory"] = category["supercategory"]
-                tmp_categories.append(tmp_cat)
-    
-    
-    return tmp_categories, tmp_img, []
+                for annotation in COCO_ANNOTATIONS:
+                    if annotation["category_id"] == category["id"]:
+                        tmp_img["id"] =  annotation["image_id"]
+                        tmp_img["width"] = width
+                        tmp_img["height"] = height
+                        tmp_img["file_name"] = file_name
+                        tmp_imgs.append(tmp_img)
+
+                        tmp_cat["id"] = category["id"]
+                        tmp_cat["name"] = category_name
+                        tmp_cat["supercategory"] = category["supercategory"]
+                        tmp_categories.append(tmp_cat)
+
+                        tmp_ann["id"] = annotation["id"]
+                        tmp_ann["image_id"] = annotation["image_id"]
+                        tmp_ann["category_id"] = annotation["category_id"]
+                        tmp_ann["bbox"] = [x,y,width,height]
+                        
+                        tmp_anns.append(tmp_ann)
+                        break
+
+    return tmp_categories, tmp_imgs, tmp_anns
 def iterate_file(image_files, xml_files, imagedir, xmldir, outputdir):
     for image_path, xml_path in zip(image_files,xml_files):
         if check_file(image_path, xml_path):
@@ -143,9 +158,10 @@ def iterate_file(image_files, xml_files, imagedir, xmldir, outputdir):
         xml_tree.write(out_file,encoding='utf-8')
         out_file.close()
 
-        # category, image, annotation = get_coco_data(xml_tree)
-
-        
+        category, image, annotation = get_coco_data(xml_tree)
+        COCO_JSON["categories"].extend(category)
+        COCO_JSON["images"].extend(image)
+        COCO_JSON["annotations"].extend(annotation)
         
 if __name__ == "__main__":
     if len(sys.argv) < 4:
@@ -163,6 +179,11 @@ if __name__ == "__main__":
     xml_files = [os.path.join(xmldir,xml) for xml in os.listdir(xmldir)]
 
     iterate_file(image_files, xml_files, imagedir, xmldir, outputdir)
+    with open(os.path.join(outputdir,"output.json"), 'w', encoding='utf-8') as f1:
+        json.dump(COCO_JSON, f1, ensure_ascii=False, indent=4)
+    with open(os.path.join(outputdir,"output.coco"), 'w', encoding='utf-8') as f2:
+        json.dump(COCO_JSON, f2, ensure_ascii=False, indent=4)
+    print("Salvato output su", outputdir)
 
     
 
